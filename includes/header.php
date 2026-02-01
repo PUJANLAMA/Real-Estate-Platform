@@ -9,10 +9,22 @@
 </head>
 <body>
 <header>
-    <h1>Real Estate Platform</h1>
-    <nav>
-        <a href="index.php">🏠 Home</a>
-        <a href="add.php">➕ Add Property</a>
-    </nav>
+    <div class="header-content">
+        <h1>Real Estate Platform</h1>
+        <nav>
+            <a href="index.php">🏠 Home</a>
+            <?php if (isLoggedIn()): ?>
+                <a href="add.php">➕ Add Property</a>
+                <span class="user-info">
+                    👤 <?php echo htmlspecialchars($_SESSION['username']); ?>
+                </span>
+                <a href="logout.php?token=<?php echo urlencode(generateCSRFToken()); ?>" 
+                   class="logout-link">🚪 Logout</a>
+            <?php else: ?>
+                <a href="login.php">🔑 Login</a>
+                <a href="register.php">📝 Register</a>
+            <?php endif; ?>
+        </nav>
+    </div>
 </header>
 <main>

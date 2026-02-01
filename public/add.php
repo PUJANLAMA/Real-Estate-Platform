@@ -1,53 +1,63 @@
 <?php
 require_once "../config/db.php";
+
+// Require login to add properties
+requireLogin();
+
 include "../includes/header.php";
 
 $message = '';
 
-if (isset($_POST['submit'])) {
-    $title = trim($_POST['title']);
-    $location = trim($_POST['location']);
-    $price = $_POST['price'];
-    $house_type = $_POST['house_type'];
-    $description = trim($_POST['description']);
-
-    // Image handling
-    $image = $_FILES['image'];
-    $imageName = $image['name'];
-    $imageTmp = $image['tmp_name'];
-
-    $ext = pathinfo($imageName, PATHINFO_EXTENSION);
-    $allowed = ['jpg', 'jpeg', 'png'];
-
-    if (!in_array(strtolower($ext), $allowed)) {
-        $message = '<div class="error-message">Invalid image format. Please upload JPG, JPEG, or PNG.</div>';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $message = '<div class="error-message">Invalid security token. Please try again.</div>';
     } else {
-        $newImageName = uniqid("property_") . "." . $ext;
-        $uploadPath = "../uploads/properties/" . $newImageName;
+        $title = sanitizeInput($_POST['title']);
+        $location = sanitizeInput($_POST['location']);
+        $price = $_POST['price'];
+        $house_type = $_POST['house_type'];
+        $description = sanitizeInput($_POST['description']);
+        $user_id = $_SESSION['user_id'];
 
-        if (move_uploaded_file($imageTmp, $uploadPath)) {
-            // Insert into database
-            $stmt = $pdo->prepare("
-                INSERT INTO properties 
-                (title, location, price, house_type, description, image)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ");
+        // Image handling
+        $image = $_FILES['image'];
+        $imageName = $image['name'];
+        $imageTmp = $image['tmp_name'];
 
-            $stmt->execute([
-                $title,
-                $location,
-                $price,
-                $house_type,
-                $description,
-                $newImageName
-            ]);
+        $ext = pathinfo($imageName, PATHINFO_EXTENSION);
+        $allowed = ['jpg', 'jpeg', 'png'];
 
-            $message = '<div class="success-message">✓ Property added successfully!</div>';
-            
-            // Clear form by redirecting after 2 seconds
-            echo '<script>setTimeout(function(){ window.location.href = "index.php"; }, 2000);</script>';
+        if (!in_array(strtolower($ext), $allowed)) {
+            $message = '<div class="error-message">Invalid image format. Please upload JPG, JPEG, or PNG.</div>';
         } else {
-            $message = '<div class="error-message">Failed to upload image. Please try again.</div>';
+            $newImageName = uniqid("property_") . "." . $ext;
+            $uploadPath = "../uploads/properties/" . $newImageName;
+
+            if (move_uploaded_file($imageTmp, $uploadPath)) {
+                // Insert into database
+                $stmt = $pdo->prepare("
+                    INSERT INTO properties 
+                    (title, location, price, house_type, description, image, user_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+                ");
+
+                if ($stmt->execute([
+                    $title,
+                    $location,
+                    $price,
+                    $house_type,
+                    $description,
+                    $newImageName,
+                    $user_id
+                ])) {
+                    redirect('index.php', 'Property added successfully!', 'success');
+                } else {
+                    $message = '<div class="error-message">Failed to add property. Please try again.</div>';
+                }
+            } else {
+                $message = '<div class="error-message">Failed to upload image. Please try again.</div>';
+            }
         }
     }
 }
@@ -62,6 +72,8 @@ if (isset($_POST['submit'])) {
 
 <div class="form-container">
     <form method="POST" enctype="multipart/form-data">
+        <?php echo getCSRFField(); ?>
+        
         <div class="form-group">
             <label for="title">Property Title *</label>
             <input type="text" id="title" name="title" required 

@@ -1,9 +1,14 @@
 <?php
 require_once "../config/db.php";
+
+// Require login
+requireLogin();
+
 include "../includes/header.php";
 
 $id = $_GET['id'] ?? 0;
 
+// Get property and verify ownership
 $stmt = $pdo->prepare("SELECT * FROM properties WHERE id = ?");
 $stmt->execute([$id]);
 $property = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -15,39 +20,52 @@ if (!$property) {
     exit;
 }
 
+// Check if user owns this property
+if ($property['user_id'] != $_SESSION['user_id']) {
+    echo '<div class="error-message">You do not have permission to edit this property.</div>';
+    echo '<a href="index.php" class="btn btn-primary">Back to Listings</a>';
+    include "../includes/footer.php";
+    exit;
+}
+
 $message = '';
 
-if (isset($_POST['update'])) {
-    $title = trim($_POST['title']);
-    $location = trim($_POST['location']);
-    $price = $_POST['price'];
-    $house_type = $_POST['house_type'];
-    $description = trim($_POST['description']);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
+    // Verify CSRF token
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $message = '<div class="error-message">Invalid security token. Please try again.</div>';
+    } else {
+        $title = sanitizeInput($_POST['title']);
+        $location = sanitizeInput($_POST['location']);
+        $price = $_POST['price'];
+        $house_type = $_POST['house_type'];
+        $description = sanitizeInput($_POST['description']);
 
-    $stmt = $pdo->prepare("
-        UPDATE properties 
-        SET title=?, location=?, price=?, house_type=?, description=?
-        WHERE id=?
-    ");
+        $stmt = $pdo->prepare("
+            UPDATE properties 
+            SET title=?, location=?, price=?, house_type=?, description=?, updated_at=NOW()
+            WHERE id=? AND user_id=?
+        ");
 
-    $stmt->execute([
-        $title,
-        $location,
-        $price,
-        $house_type,
-        $description,
-        $id
-    ]);
-
-    $message = '<div class="success-message">✓ Property updated successfully!</div>';
-    
-    // Refresh property data
-    $stmt = $pdo->prepare("SELECT * FROM properties WHERE id = ?");
-    $stmt->execute([$id]);
-    $property = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    // Redirect after 2 seconds
-    echo '<script>setTimeout(function(){ window.location.href = "index.php"; }, 2000);</script>';
+        if ($stmt->execute([
+            $title,
+            $location,
+            $price,
+            $house_type,
+            $description,
+            $id,
+            $_SESSION['user_id']
+        ])) {
+            redirect('index.php', 'Property updated successfully!', 'success');
+        } else {
+            $message = '<div class="error-message">Failed to update property. Please try again.</div>';
+        }
+        
+        // Refresh property data
+        $stmt = $pdo->prepare("SELECT * FROM properties WHERE id = ?");
+        $stmt->execute([$id]);
+        $property = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
 }
 ?>
 
@@ -60,6 +78,8 @@ if (isset($_POST['update'])) {
 
 <div class="form-container">
     <form method="POST">
+        <?php echo getCSRFField(); ?>
+        
         <div class="form-group">
             <label for="title">Property Title *</label>
             <input type="text" id="title" name="title" 
